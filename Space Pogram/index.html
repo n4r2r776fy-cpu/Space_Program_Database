@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SPACE-OPS CONSOLE v2.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== BOOT SCREEN (етап 1) ===== -->
+  <div id="boot-screen">
+    <div class="boot-text">
+      <p>SPACE-OPS CONSOLE v2.0</p>
+      <p>BOOTING SYSTEM...</p>
+      <p>INITIALIZING DATABASE MODULE...</p>
+      <p>CHECKING INTEGRITY...</p>
+      <p>STATUS: <span class="status">ONLINE</span><span class="cursor">_</span></p>
+    </div>
+  </div>
+
+  <!-- ===== LOGIN SCREEN (етап 2) ===== -->
+  <div id="login-screen" class="hidden">
+    <div class="login-box panel">
+      <h1 class="login-title">SPACE-OPS LOGIN TERMINAL</h1>
+      <p class="small muted">ENTER USERNAME AND PASSWORD TO ACCESS SYSTEM</p>
+
+      <form id="loginForm" autocomplete="off" class="login-form">
+        <input type="text" id="username" placeholder="Ім'я користувача" required />
+        <input type="password" id="password" placeholder="Пароль" required />
+        <button type="submit" class="btn login-btn">ENTER SYSTEM</button>
+      </form>
+
+      <p id="loginStatus" class="login-status small"></p>
+    </div>
+  </div>
+
+  <!-- ===== APP UI (етап 3) ===== -->
+  <div class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">☢</div>
+        <div>
+          <h1 id="userWelcome">SPACE-OPS CONSOLE</h1>
+          <p class="subtitle">Система керування космічними місіями</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-view="overview">Огляд</button>
+        <button class="nav-btn" data-view="missions">Місії</button>
+        <button class="nav-btn" data-view="spacecraft">Апарат</button>
+        <button class="nav-btn" data-view="telemetry">Телеметрія</button>
+        <button class="nav-btn" data-view="logs">Mission Logs</button>
+        <button class="nav-btn" data-view="sql">SQL</button>
+      </nav>
+    </header>
+
+    <main class="container">
+      <!-- Ліва колонка -->
+      <section class="content">
+
+        <!-- ОГЛЯД -->
+        <article id="overview" class="panel view">
+          <h2>Огляд системи</h2>
+          <p class="lead">
+            Ця локальна консоль імітує інтерфейс керування базою даних
+            космічних місій. Всі дані зберігаються лише в браузері.
+            Сервер не потрібен.
+          </p>
+
+          <h3>Основні сутності</h3>
+          <ul class="ul-tight">
+            <li><strong>Місія (Mission)</strong> — id, назва, дата запуску, статус, опис</li>
+            <li><strong>Апарат (Spacecraft)</strong> — id, назва, виробник, місія</li>
+            <li><strong>Телеметрія (Telemetry)</strong> — час, параметр, значення</li>
+          </ul>
+
+          <h3>Що можна робити</h3>
+          <ol class="ol-tight">
+            <li>Додавати місії та космічні апарати</li>
+            <li>Переглядати і фільтрувати місії</li>
+            <li>Переглядати телеметрію і графік значень</li>
+            <li>Журналювати події (Mission Logs)</li>
+            <li>Експортувати/імпортувати дані у форматі .json</li>
+            <li>Переглянути структуру БД (DDL/DML)</li>
+          </ol>
+
+          <div class="note-card">
+            <div class="note-head">Примітка</div>
+            <div class="note-body">
+              Це демо для курсової роботи.<br>
+              Всі операції виконуються локально і ніде не зберігаються,
+              крім пам'яті поточної вкладки браузера.
+            </div>
+          </div>
+        </article>
+
+        <!-- МІСІЇ -->
+        <article id="missions" class="panel view" style="display:none;">
+          <h2>Місії</h2>
+          <div class="actions">
+            <input id="missionSearch" type="search" placeholder="Пошук за назвою або статусом..." />
+            <button id="addMissionBtn" class="btn">Додати місію</button>
+          </div>
+          <div id="missionsList" class="list"></div>
+        </article>
+
+        <!-- АПАРАТИ -->
+        <article id="spacecraft" class="panel view" style="display:none;">
+          <h2>Космічні апарати</h2>
+          <div class="actions">
+            <button id="addSpacecraftBtn" class="btn">Додати апарат</button>
+          </div>
+          <div id="spacecraftList" class="list"></div>
+        </article>
+
+        <!-- ТЕЛЕМЕТРІЯ -->
+        <article id="telemetry" class="panel view" style="display:none;">
+          <h2>Телеметрія</h2>
+          <div class="actions telemetry-actions">
+            <select id="telemetrySelect"></select>
+            <button id="simulateBtn" class="btn">Запустити симуляцію</button>
+          </div>
+
+          <canvas id="telemetryChart" width="900" height="350"></canvas>
+
+          <div id="telemetryTable" class="telemetry-table"></div>
+        </article>
+
+        <!-- MISSION LOGS -->
+        <article id="logs" class="panel view" style="display:none;">
+          <h2>Mission Logs</h2>
+          <p class="small muted">Журнал подій космічних операцій:</p>
+          <div id="logsContainer" class="list-logs-area"></div>
+          <div class="actions">
+            <input id="logText" placeholder="Введіть запис логу..." />
+            <button id="addLogBtn" class="btn">Додати запис</button>
+          </div>
+        </article>
+
+        <!-- SQL -->
+        <article id="sql" class="panel view" style="display:none;">
+          <h2>Структура бази даних (SQL)</h2>
+
+<pre class="sql">
+-- Таблиця місій
+CREATE TABLE Mission (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  launch_date DATE,
+  duration_days INTEGER DEFAULT 0,
+  status TEXT,
+  description TEXT
+);
+
+-- Таблиця апаратів
+CREATE TABLE Spacecraft (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  manufacturer TEXT,
+  mission_id INTEGER,
+  status TEXT,
+  FOREIGN KEY (mission_id) REFERENCES Mission(id)
+);
+
+-- Таблиця телеметрії
+CREATE TABLE Telemetry (
+  id INTEGER PRIMARY KEY,
+  spacecraft_id INTEGER,
+  timestamp DATETIME,
+  parameter TEXT,
+  value REAL,
+  FOREIGN KEY (spacecraft_id) REFERENCES Spacecraft(id)
+);
+
+-- Приклад вставки місії
+INSERT INTO Mission (id, name, launch_date, duration_days, status, description)
+VALUES (1, 'Лайка-1', '2023-03-12', 365, 'active', 'Наукова орбітальна місія');
+
+-- Запит: всі апарати конкретної місії
+SELECT s.*
+FROM Spacecraft s
+JOIN Mission m ON s.mission_id = m.id
+WHERE m.name = 'Лайка-1';
+</pre>
+        </article>
+
+      </section>
+
+      <!-- Права колонка -->
+      <aside class="sidebar">
+        <div class="card">
+          <h3>Швидкі дії</h3>
+          <div class="sidebar-buttons">
+            <button id="loadSample" class="btn">Завантажити демо-дані</button>
+            <button id="clearData" class="btn ghost">Очистити все</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Імпорт / Експорт</h3>
+          <button id="exportBtn" class="btn">Експорт .json</button>
+          <label class="file-label btn">Імпорт .json
+            <input id="importFile" type="file" accept=".json">
+          </label>
+        </div>
+
+        <div class="card">
+          <h3>Стан системи</h3>
+          <p class="muted small">
+            Консоль працює локально.<br>
+            Підключення до зовнішньої БД: ВІДСУТНЄ.<br>
+            Статус: ГОТОВО ДО РОБОТИ.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="foot">
+      <small>SPACE-OPS CONSOLE • Локальний режим • 2077</small>
+    </footer>
+  </div>
+
+  <!-- ===== ERROR OVERLAY (для демо поломки) ===== -->
+  <div id="errorOverlay" class="error hidden">
+    <div class="error-text">
+      <p>>> SYSTEM ERROR DETECTED</p>
+      <p>>> corrupted bytes detected 0xA9 0x1F ...</p>
+      <p>>> SYSTEM REBOOT RECOMMENDED</p>
+    </div>
+  </div>
+
+  <!-- ===== МОДАЛКА ===== -->
+  <div id="modal" class="modal">
+    <div class="modal-box">
+      <div id="modalContent"></div>
+      <div class="modal-actions">
+        <button id="closeModal" class="btn">Закрити</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AUDIO (онлайн джерела) ===== -->
+  <!-- boot sound -->
+  <audio id="bootSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2023/01/22/audio_01d7a2e777.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- click sound -->
+  <audio id="clickSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_515a76d2cf.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- error sound -->
+  <audio id="errorSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_62d5c65369.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- тихий фоновий шум терміналу -->
+  <audio id="bgNoise" preload="auto" loop>
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_27b011e1a5.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="app.js"></script>
+</body>
+</html>
