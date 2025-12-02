@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SPACE-OPS CONSOLE v2.0</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== BOOT SCREEN (етап 1) ===== -->
+  <div id="boot-screen">
+    <div class="boot-text">
+      <p>SPACE-OPS CONSOLE v2.0</p>
+      <p>BOOTING SYSTEM...</p>
+      <p>INITIALIZING DATABASE MODULE...</p>
+      <p>CHECKING INTEGRITY...</p>
+      <p>STATUS: <span class="status">ONLINE</span><span class="cursor">_</span></p>
+    </div>
+  </div>
+
+  <!-- ===== LOGIN SCREEN (етап 2) ===== -->
+  <div id="login-screen" class="hidden">
+    <div class="login-box panel">
+      <h1 class="login-title">SPACE-OPS LOGIN TERMINAL</h1>
+      <p class="small muted">ENTER USERNAME AND PASSWORD TO ACCESS SYSTEM</p>
+
+      <form id="loginForm" autocomplete="off" class="login-form">
+        <input type="text" id="username" placeholder="Ім'я користувача" required />
+        <input type="password" id="password" placeholder="Пароль" required />
+        <button type="submit" class="btn login-btn">ENTER SYSTEM</button>
+      </form>
+
+      <p id="loginStatus" class="login-status small"></p>
+    </div>
+  </div>
+
+  <!-- ===== APP UI (етап 3) ===== -->
+  <div class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">☢</div>
+        <div>
+          <h1 id="userWelcome">SPACE-OPS CONSOLE</h1>
+          <p class="subtitle">Система керування космічними місіями</p>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-btn active" data-view="overview">Огляд</button>
+        <button class="nav-btn" data-view="missions">Місії</button>
+        <button class="nav-btn" data-view="spacecraft">Апарат</button>
+        <button class="nav-btn" data-view="telemetry">Телеметрія</button>
+        <button class="nav-btn" data-view="logs">Mission Logs</button>
+        <button class="nav-btn" data-view="sql">SQL</button>
+      </nav>
+    </header>
+
+    <main class="container">
+      <!-- Ліва колонка -->
+      <section class="content">
+
+        <!-- ОГЛЯД -->
+        <article id="overview" class="panel view">
+          <h2>Огляд системи</h2>
+          <p class="lead">
+            Ця локальна консоль імітує інтерфейс керування базою даних
+            космічних місій. Всі дані зберігаються лише в браузері.
+            Сервер не потрібен.
+          </p>
+
+          <h3>Основні сутності</h3>
+          <ul class="ul-tight">
+            <li><strong>Місія (Mission)</strong> — id, назва, дата запуску, статус, опис</li>
+            <li><strong>Апарат (Spacecraft)</strong> — id, назва, виробник, місія</li>
+            <li><strong>Телеметрія (Telemetry)</strong> — час, параметр, значення</li>
+          </ul>
+
+          <h3>Що можна робити</h3>
+          <ol class="ol-tight">
+            <li>Додавати місії та космічні апарати</li>
+            <li>Переглядати і фільтрувати місії</li>
+            <li>Переглядати телеметрію і графік значень</li>
+            <li>Журналювати події (Mission Logs)</li>
+            <li>Експортувати/імпортувати дані у форматі .json</li>
+            <li>Переглянути структуру БД (DDL/DML)</li>
+          </ol>
+
+          <div class="note-card">
+            <div class="note-head">Примітка</div>
+            <div class="note-body">
+              Це демо для курсової роботи.<br>
+              Всі операції виконуються локально і ніде не зберігаються,
+              крім пам'яті поточної вкладки браузера.
+            </div>
+          </div>
+        </article>
+
+        <!-- МІСІЇ -->
+        <article id="missions" class="panel view" style="display:none;">
+          <h2>Місії</h2>
+          <div class="actions">
+            <input id="missionSearch" type="search" placeholder="Пошук за назвою або статусом..." />
+            <button id="addMissionBtn" class="btn">Додати місію</button>
+          </div>
+          <div id="missionsList" class="list"></div>
+        </article>
+
+        <!-- АПАРАТИ -->
+        <article id="spacecraft" class="panel view" style="display:none;">
+          <h2>Космічні апарати</h2>
+          <div class="actions">
+            <button id="addSpacecraftBtn" class="btn">Додати апарат</button>
+          </div>
+          <div id="spacecraftList" class="list"></div>
+        </article>
+
+        <!-- ТЕЛЕМЕТРІЯ -->
+        <article id="telemetry" class="panel view" style="display:none;">
+          <h2>Телеметрія</h2>
+          <div class="actions telemetry-actions">
+            <select id="telemetrySelect"></select>
+            <button id="simulateBtn" class="btn">Запустити симуляцію</button>
+          </div>
+
+          <canvas id="telemetryChart" width="900" height="350"></canvas>
+
+          <div id="telemetryTable" class="telemetry-table"></div>
+        </article>
+
+        <!-- MISSION LOGS -->
+        <article id="logs" class="panel view" style="display:none;">
+          <h2>Mission Logs</h2>
+          <p class="small muted">Журнал подій космічних операцій:</p>
+          <div id="logsContainer" class="list-logs-area"></div>
+          <div class="actions">
+            <input id="logText" placeholder="Введіть запис логу..." />
+            <button id="addLogBtn" class="btn">Додати запис</button>
+          </div>
+        </article>
+
+        <!-- SQL -->
+        <article id="sql" class="panel view" style="display:none;">
+          <h2>Структура бази даних (SQL)</h2>
+
+<pre class="sql">
+BEGIN;
+
+-- ---------- Розширення ----------
+CREATE EXTENSION IF NOT EXISTS citext;   -- нечутливі до регістру логіни
+CREATE EXTENSION IF NOT EXISTS pgcrypto; -- хешування паролів (crypt)
+
+-- ---------- Схема ----------
+CREATE SCHEMA IF NOT EXISTS space_ops AUTHORIZATION CURRENT_USER;
+SET search_path TO space_ops, public;
+
+-- ---------- Довідкові типи ----------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'mission_status_enum') THEN
+    CREATE TYPE mission_status_enum AS ENUM ('planned', 'active', 'completed', 'aborted');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'spacecraft_status_enum') THEN
+    CREATE TYPE spacecraft_status_enum AS ENUM ('operational', 'standby', 'retired', 'lost');
+  END IF;
+END $$;
+
+-- ---------- Таблиці ----------
+-- Оператори (користувачі системи)
+CREATE TABLE IF NOT EXISTS operators (
+  id          BIGSERIAL PRIMARY KEY,
+  username    CITEXT      NOT NULL UNIQUE,
+  pass_hash   TEXT        NOT NULL,         -- зберігаємо bcrypt з pgcrypto
+  is_active   BOOLEAN     NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Місії
+CREATE TABLE IF NOT EXISTS missions (
+  id             BIGSERIAL PRIMARY KEY,
+  name           TEXT        NOT NULL UNIQUE,
+  launch_date    DATE        NOT NULL,
+  duration_days  INTEGER     NOT NULL DEFAULT 0 CHECK (duration_days >= 0),
+  status         mission_status_enum NOT NULL DEFAULT 'planned',
+  description    TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (launch_date >= DATE '1957-10-04') -- перший запуск штучного супутника :)
+);
+
+-- Апарат
+CREATE TABLE IF NOT EXISTS spacecraft (
+  id            BIGSERIAL PRIMARY KEY,
+  name          TEXT                   NOT NULL,
+  manufacturer  TEXT,
+  mission_id    BIGINT REFERENCES missions(id) ON DELETE SET NULL,
+  status        spacecraft_status_enum NOT NULL DEFAULT 'operational',
+  serial_no     TEXT UNIQUE,
+  created_at    TIMESTAMPTZ            NOT NULL DEFAULT now()
+);
+
+-- Телеметрія
+CREATE TABLE IF NOT EXISTS telemetry (
+  id            BIGSERIAL PRIMARY KEY,
+  spacecraft_id BIGINT      NOT NULL REFERENCES spacecraft(id) ON DELETE CASCADE,
+  ts            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  parameter     TEXT        NOT NULL,
+  value         DOUBLE PRECISION NOT NULL,
+  unit          TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Журнал подій
+CREATE TABLE IF NOT EXISTS logs (
+  id         BIGSERIAL PRIMARY KEY,
+  who_id     BIGINT REFERENCES operators(id) ON DELETE SET NULL,
+  level      TEXT NOT NULL CHECK (level IN ('info','warn','error')),
+  message    TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ---------- Індекси ----------
+CREATE INDEX IF NOT EXISTS idx_missions_name_lower ON missions (lower(name));
+CREATE INDEX IF NOT EXISTS idx_spacecraft_mission  ON spacecraft (mission_id);
+CREATE INDEX IF NOT EXISTS idx_telemetry_sc_ts     ON telemetry (spacecraft_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_level_time     ON logs (level, created_at DESC);
+
+-- ---------- В’юхи ----------
+-- Останній телеметричний запис на кожен апарат
+CREATE OR REPLACE VIEW v_latest_telemetry AS
+SELECT DISTINCT ON (t.spacecraft_id)
+  t.spacecraft_id, t.id AS telemetry_id, t.ts, t.parameter, t.value, t.unit
+FROM telemetry t
+ORDER BY t.spacecraft_id, t.ts DESC;
+
+-- Зведення по місіях: скільки апаратів і останній час телеметрії
+CREATE OR REPLACE VIEW v_mission_summary AS
+SELECT
+  m.id,
+  m.name,
+  m.status,
+  m.launch_date,
+  COUNT(DISTINCT s.id) AS spacecraft_cnt,
+  MAX(t.ts) AS last_telemetry_ts
+FROM missions m
+LEFT JOIN spacecraft s ON s.mission_id = m.id
+LEFT JOIN telemetry t  ON t.spacecraft_id = s.id
+GROUP BY m.id, m.name, m.status, m.launch_date
+ORDER BY m.launch_date DESC;
+
+-- ---------- Функції / Тригери ----------
+-- Функція додавання телеметрії (зручне API)
+CREATE OR REPLACE FUNCTION api_add_telemetry(
+  p_spacecraft_id BIGINT,
+  p_parameter     TEXT,
+  p_value         DOUBLE PRECISION,
+  p_unit          TEXT DEFAULT NULL
+) RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE new_id BIGINT;
+BEGIN
+  INSERT INTO telemetry (spacecraft_id, parameter, value, unit)
+  VALUES (p_spacecraft_id, p_parameter, p_value, p_unit)
+  RETURNING id INTO new_id;
+  RETURN new_id;
+END $$;
+
+-- Логувати зміну статусу місії
+CREATE OR REPLACE FUNCTION trg_mission_status_audit()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP = 'UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN
+    INSERT INTO logs (who_id, level, message)
+    VALUES (NULL, 'info',
+            format('Mission %s status: %s → %s', NEW.name, OLD.status, NEW.status));
+  END IF;
+  RETURN NEW;
+END $$;
+
+DROP TRIGGER IF EXISTS mission_status_audit ON missions;
+CREATE TRIGGER mission_status_audit
+AFTER UPDATE ON missions
+FOR EACH ROW
+EXECUTE FUNCTION trg_mission_status_audit();
+
+-- ---------- Ролі/Права (опційно, але красиво для захисту) ----------
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'space_ops_app') THEN
+    CREATE ROLE space_ops_app LOGIN PASSWORD 'space_ops_app_password';
+  END IF;
+END $$;
+
+GRANT USAGE ON SCHEMA space_ops TO space_ops_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA space_ops TO space_ops_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA space_ops TO space_ops_app;
+
+-- Щоб у майбутньому нові таблиці теж автоматично мали права:
+ALTER DEFAULT PRIVILEGES IN SCHEMA space_ops
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO space_ops_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA space_ops
+GRANT USAGE, SELECT ON SEQUENCES TO space_ops_app;
+
+-- ---------- Демонстраційні дані ----------
+-- Оператори (пароль 1234, хеш через pgcrypto/ bcrypt)
+WITH pwd AS (
+  SELECT crypt('1234', gen_salt('bf')) AS h
+)
+INSERT INTO operators (username, pass_hash)
+SELECT u, (SELECT h FROM pwd)
+FROM (VALUES
+  ('Данило Лагоднюк'),
+  ('Павло Вакулюк'),
+  ('Гупалюк Роман'),
+  ('Дарина Жабчик'),
+  ('Євген Ковальчук'),
+  ('Артем Коцюба'),
+  ('Іван Крупка'),
+  ('Евеліна Малецька'),
+  ('Роман Матвійчук'),
+  ('Андрій Молчанович'),
+  ('Аліна Мороз'),
+  ('Нікіта Нефьодов'),
+  ('Ксенія Ольховська'),
+  ('Андрій Опанасюк'),
+  ('Олександра Рогалінська'),
+  ('Анастасія Середа'),
+  ('Дарина Стернійчук'),
+  ('Арсен Стребчук'),
+  ('Катерина Фоменко'),
+  ('Тарас Шило')
+) AS t(u)
+ON CONFLICT (username) DO NOTHING;
+
+-- Місії
+INSERT INTO missions (name, launch_date, duration_days, status, description)
+VALUES
+  ('Лайка-1',  '2023-03-12', 365, 'active',    'Наукова орбітальна місія зі збирання телеметрії'),
+  ('Orbiter-X','2024-07-02', 180, 'completed', 'Експериментальний орбітальний модуль')
+ON CONFLICT (name) DO NOTHING;
+
+-- Апарат
+INSERT INTO spacecraft (name, manufacturer, mission_id, status, serial_no)
+VALUES
+  ('LK-1',  'UA Aerospace', (SELECT id FROM missions WHERE name='Лайка-1'),  'operational', 'LK1-0001'),
+  ('ORB-X', 'SpaceLab',     (SELECT id FROM missions WHERE name='Orbiter-X'), 'retired',    'ORBX-0001')
+ON CONFLICT (serial_no) DO NOTHING;
+
+-- Телеметрія (приклади)
+INSERT INTO telemetry (spacecraft_id, ts, parameter, value, unit) VALUES
+  ((SELECT id FROM spacecraft WHERE name='LK-1'  ), '2025-11-01 12:11+02', 'temp',    45.3, '°C'),
+  ((SELECT id FROM spacecraft WHERE name='LK-1'  ), '2025-11-01 12:12+02', 'voltage', 28.4, 'V'),
+  ((SELECT id FROM spacecraft WHERE name='ORB-X' ), '2024-09-01 06:00+02', 'voltage', 0.0,  'V');
+
+-- Логи
+INSERT INTO logs (who_id, level, message)
+VALUES
+  (NULL, 'info', 'Demo dataset loaded'),
+  (NULL, 'info', 'System initialized');
+
+COMMIT;
+</pre>
+        </article>
+
+      </section>
+
+      <!-- Права колонка -->
+      <aside class="sidebar">
+        <div class="card">
+          <h3>Швидкі дії</h3>
+          <div class="sidebar-buttons">
+            <button id="loadSample" class="btn">Завантажити демо-дані</button>
+            <button id="clearData" class="btn ghost">Очистити все</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Імпорт / Експорт</h3>
+          <button id="exportBtn" class="btn">Експорт .json</button>
+          <label class="file-label btn">Імпорт .json
+            <input id="importFile" type="file" accept=".json">
+          </label>
+        </div>
+
+        <div class="card">
+          <h3>Стан системи</h3>
+          <p class="muted small">
+            Консоль працює локально.<br>
+            Підключення до зовнішньої БД: ВІДСУТНЄ.<br>
+            Статус: ГОТОВО ДО РОБОТИ.
+          </p>
+        </div>
+      </aside>
+    </main>
+
+    <footer class="foot">
+      <small>SPACE-OPS CONSOLE • Локальний режим • 2077</small>
+    </footer>
+  </div>
+
+  <!-- ===== ERROR OVERLAY (для демо поломки) ===== -->
+  <div id="errorOverlay" class="error hidden">
+    <div class="error-text">
+      <p>>> SYSTEM ERROR DETECTED</p>
+      <p>>> corrupted bytes detected 0xA9 0x1F ...</p>
+      <p>>> SYSTEM REBOOT RECOMMENDED</p>
+    </div>
+  </div>
+
+  <!-- ===== МОДАЛКА ===== -->
+  <div id="modal" class="modal">
+    <div class="modal-box">
+      <div id="modalContent"></div>
+      <div class="modal-actions">
+        <button id="closeModal" class="btn">Закрити</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== AUDIO (онлайн джерела) ===== -->
+  <!-- boot sound -->
+  <audio id="bootSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2023/01/22/audio_01d7a2e777.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- click sound -->
+  <audio id="clickSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_515a76d2cf.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- error sound -->
+  <audio id="errorSound" preload="auto">
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_62d5c65369.mp3" type="audio/mpeg">
+  </audio>
+
+  <!-- тихий фоновий шум терміналу -->
+  <audio id="bgNoise" preload="auto" loop>
+    <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_27b011e1a5.mp3" type="audio/mpeg">
+  </audio>
+
+  <script src="app.js"></script>
+</body>
+</html>

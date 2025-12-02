@@ -1,6 +1,11 @@
-// ===== SPACE-OPS CONSOLE v2.0 =====
+// -------------------------------
+// SPACE-OPS CONSOLE FRONTEND v2
+// -------------------------------
 
-// Користувачі з доступом (ім'я → пароль 1234)
+// Адреса бекенда
+const API = "http://localhost:4000";
+
+// Користувачі з доступом (офлайн-фолбек, пароль 1234)
 const ALLOWED_USERS = [
   "Данило Лагоднюк",
   "Павло Вакулюк",
@@ -26,11 +31,11 @@ const ALLOWED_USERS = [
 
 const DEFAULT_PASSWORD = "1234";
 
-// ====== Шорткати ======
+// ===== ШОРТКАТИ =====
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-// ====== "База даних" (локально) ======
+// ===== ЛОКАЛЬНА "БАЗА ДАНИХ" =====
 let DB = {
   missions: [],
   spacecraft: [],
@@ -38,117 +43,325 @@ let DB = {
   logs: []
 };
 
-// ====== LocalStorage ======
+// ===== LocalStorage =====
 function saveDB() {
   localStorage.setItem("space_ops_db", JSON.stringify(DB));
 }
 function loadDB() {
   const raw = localStorage.getItem("space_ops_db");
-  if (raw) {
-    try {
-      DB = JSON.parse(raw);
-    } catch (e) {}
+  if (!raw) return;
+  try {
+    DB = JSON.parse(raw);
+  } catch (e) {
+    console.warn("Failed to parse local DB", e);
   }
 }
 
-// ====== BOOT SEQUENCE ======
+// ================= BOOT SEQUENCE =================
 window.addEventListener("load", () => {
   const bootEl = $("#boot-screen");
   const loginEl = $("#login-screen");
-
+  const appEl = document.querySelector(".app");
   const bootSound = $("#bootSound");
   const bgNoise = $("#bgNoise");
 
-  // граємо звук boot і вмикаємо фоновий шум
-  bootSound && bootSound.play().catch(() => {});
-  bgNoise && (bgNoise.volume = 0.05, bgNoise.play().catch(() => {}));
+  if (!bootEl) {
+    if (appEl) {
+      appEl.classList.remove("hidden");
+      initApp();
+    }
+    return;
+  }
 
-  // показати логін після boot
+  if (bootSound) {
+    bootSound.play().catch(() => {});
+  }
+  if (bgNoise) {
+    bgNoise.volume = 0.05;
+    bgNoise.loop = true;
+    bgNoise.play().catch(() => {});
+  }
+
   setTimeout(() => {
     bootEl.style.transition = "opacity 1s ease";
     bootEl.style.opacity = "0";
 
     setTimeout(() => {
       bootEl.classList.add("hidden");
-      loginEl.classList.remove("hidden");
+
+      if (loginEl) {
+        loginEl.classList.remove("hidden");
+      } else if (appEl) {
+        appEl.classList.remove("hidden");
+        initApp();
+      }
     }, 1000);
   }, 4000);
 });
 
-// ====== LOGIN LOGIC ======
+// =============== LOGIN LOGIC ===================
 const loginForm = $("#loginForm");
+
 if (loginForm) {
-  loginForm.addEventListener("submit", (e) => {
+  loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
 
     const name = $("#username").value.trim();
     const pass = $("#password").value.trim();
     const status = $("#loginStatus");
 
-    // check
-    const okName = ALLOWED_USERS.some(
-      (u) => u.toLowerCase() === name.toLowerCase()
-    );
-    const okPass = pass === DEFAULT_PASSWORD;
+    if (!status) return;
 
-    if (okName && okPass) {
-      // доступ дозволено
-      status.textContent = `ACCESS GRANTED. WELCOME, ${name.toUpperCase()}`;
-      status.classList.remove("err");
-      status.classList.add("ok");
-
-      // клік звук для підтвердження
-      const clickSound = $("#clickSound");
-      clickSound && (clickSound.currentTime = 0, clickSound.play().catch(()=>{}));
-
-      // зберегти ім'я оператора, показати дашборд
-      setTimeout(() => {
-        openAppForUser(name);
-      }, 800);
-    } else {
-      // помилка доступу
-      status.textContent = "ACCESS DENIED";
+    if (!name || !pass) {
+      status.textContent = "ВВЕДИ ІМ'Я ТА ПАРОЛЬ";
       status.classList.remove("ok");
       status.classList.add("err");
+      return;
+    }
 
-      const errorSound = $("#errorSound");
-      errorSound && (errorSound.currentTime = 0, errorSound.play().catch(()=>{}));
+    status.textContent = "CHECKING ACCESS...";
+    status.classList.remove("ok", "err");
 
-      // тряска екрана при відмові
-      document.body.classList.add("shake");
-      setTimeout(() => document.body.classList.remove("shake"), 600);
+    const localOkName = ALLOWED_USERS.some(
+      (u) => u.toLowerCase() === name.toLowerCase()
+    );
+    const localOkPass = pass === DEFAULT_PASSWORD;
+
+    const fallbackLocalLogin = () => {
+      if (localOkName && localOkPass) {
+        status.textContent = `LOCAL ACCESS GRANTED, ${name.toUpperCase()}`;
+        status.classList.remove("err");
+        status.classList.add("ok");
+
+        const clickSound = $("#clickSound");
+        clickSound &&
+          ((clickSound.currentTime = 0), clickSound.play().catch(() => {}));
+
+        setTimeout(() => {
+          openAppForUser(name);
+        }, 800);
+      } else {
+        status.textContent = "ACCESS DENIED";
+        status.classList.remove("ok");
+        status.classList.add("err");
+
+        const errorSound = $("#errorSound");
+        errorSound &&
+          ((errorSound.currentTime = 0), errorSound.play().catch(() => {}));
+
+        document.body.classList.add("shake");
+        setTimeout(() => document.body.classList.remove("shake"), 600);
+      }
+    };
+
+    try {
+      const res = await fetch(`${API}/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: name, password: pass })
+      });
+
+      if (!res.ok) throw new Error("HTTP " + res.status);
+
+      const data = await res.json();
+      console.log("LOGIN RESPONSE:", data);
+
+      if (data.ok) {
+        status.textContent = `ACCESS GRANTED. WELCOME, ${name.toUpperCase()}`;
+        status.classList.remove("err");
+        status.classList.add("ok");
+
+        const clickSound = $("#clickSound");
+        clickSound &&
+          ((clickSound.currentTime = 0), clickSound.play().catch(() => {}));
+
+        setTimeout(() => {
+          openAppForUser(name);
+        }, 800);
+      } else {
+        fallbackLocalLogin();
+      }
+    } catch (err) {
+      console.error("LOGIN FETCH ERROR:", err);
+      fallbackLocalLogin();
     }
   });
 }
 
-// Після успішного логіну
+// ============ ВХІД У СИСТЕМУ ТА INIT =============
+let appInitialized = false;
+
 function openAppForUser(username) {
-  $("#login-screen").classList.add("hidden");
+  const loginEl = $("#login-screen");
+  const appEl = document.querySelector(".app");
 
-  // оновити "WELCOME" текст
-  $("#userWelcome").textContent =
-    `WELCOME, ${username.toUpperCase()} — ACCESS GRANTED`;
+  if (loginEl) loginEl.classList.add("hidden");
+  if (appEl) appEl.classList.remove("hidden");
 
-  // показати основну консоль
-  $(".app").classList.remove("hidden");
+  const userWelcome = $("#userWelcome");
+  if (userWelcome) {
+    userWelcome.textContent = `WELCOME, ${username.toUpperCase()} — ACCESS GRANTED`;
+  }
 
-  // ініціалізувати консоль (дані, події)
   initApp();
 }
 
-// ====== ІНІЦІАЛІЗАЦІЯ ДОДАТКА ======
-function initApp() {
+async function initApp() {
+  if (appInitialized) return;
+  appInitialized = true;
+
   loadDB();
+  await syncFromBackend().catch(() => {});
   renderMissions();
   renderSpacecraft();
-  populateTelemetrySelect();
+  await populateTelemetrySelect();
   renderLogs();
   bindEvents();
+
+  checkBackendHealth();
+  updateSystemStatus();
+  setInterval(() => {
+    checkBackendHealth();
+    updateSystemStatus();
+  }, 10000);
 }
 
-// ====== Прив'язка подій ======
+// ===== СИНХРОНІЗАЦІЯ З БЕКЕНДОМ =====
+async function syncFromBackend() {
+  try {
+    const resp = await fetch(`${API}/missions`);
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+    const missions = await resp.json();
+    if (Array.isArray(missions)) {
+      DB.missions = missions.map((m) => ({
+        id: m.id,
+        name: m.name,
+        launch_date: m.launch_date,
+        status: m.status,
+        description: m.description || ""
+      }));
+      saveDB();
+      addLog("Дані місій синхронізовано з сервером");
+    }
+  } catch (err) {
+    console.warn(
+      "Не вдалося завантажити місії з бекенда, використовую локальні",
+      err
+    );
+    addLog("Не вдалося отримати місії з сервера, використано локальний кеш");
+  }
+}
+
+// ===== ПЕРЕВІРКА ПІДКЛЮЧЕННЯ ДО БЕКЕНДА / БД =====
+async function checkBackendHealth() {
+  const dbStatus = $("#dbStatus");
+  if (!dbStatus) return;
+
+  try {
+    const res = await fetch(`${API}/health`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const data = await res.json();
+
+    if (data.ok && data.db === "online") {
+      dbStatus.textContent = "Підключення до зовнішньої БД: ПРИСУТНЄ (ONLINE)";
+      dbStatus.classList.remove("err");
+      dbStatus.classList.add("ok");
+    } else {
+      dbStatus.textContent =
+        "Підключення до зовнішньої БД: ПРОБЛЕМИ (див. лог)";
+      dbStatus.classList.add("err");
+    }
+  } catch (err) {
+    console.warn("HEALTH ERROR:", err);
+    dbStatus.textContent =
+      "Підключення до зовнішньої БД: НЕДОСТУПНЕ (офлайн-режим)";
+    dbStatus.classList.add("err");
+  }
+}
+
+// ===== СТАН СИСТЕМИ З БЕКЕНДА =====
+async function updateSystemStatus() {
+  const textEl = $("#systemStatusText");
+  const listEl = $("#systemStatusList");
+  if (!textEl || !listEl) return;
+
+  try {
+    const res = await fetch(`${API}/system-status`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const data = await res.json();
+    if (!data.ok) throw new Error("Backend returned not ok");
+
+    textEl.textContent = `Глобальний статус: ${data.global_status}`;
+    listEl.innerHTML = "";
+
+    data.systems.forEach((s) => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        <strong>${escapeHTML(s.mission_name)}</strong> — 
+        статус місії: ${escapeHTML(s.mission_status)}, 
+        система: ${escapeHTML(s.system_status)}
+      `;
+      listEl.appendChild(li);
+    });
+  } catch (err) {
+    console.warn("SYSTEM STATUS ERROR:", err);
+    textEl.textContent =
+      "Не вдається отримати стан системи (офлайн або помилка сервера).";
+    listEl.innerHTML = "";
+  }
+}
+
+// ===== ТЕЛЕМЕТРІЯ З БЕКЕНДА =====
+async function updateTelemetryFromBackend(spacecraftId) {
+  if (!spacecraftId) return;
+  try {
+    const res = await fetch(`${API}/telemetry?spacecraft_id=${spacecraftId}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const data = await res.json();
+    if (!data.ok || !Array.isArray(data.rows)) return;
+
+    DB.telemetry = DB.telemetry.filter(
+      (t) => t.spacecraft_id !== spacecraftId
+    );
+
+    const mapped = data.rows.map((r) => ({
+      id: r.id,
+      spacecraft_id: r.spacecraft_id,
+      timestamp: r.timestamp,
+      parameter: r.parameter,
+      value: r.value
+    }));
+
+    DB.telemetry.push(...mapped);
+    saveDB();
+  } catch (err) {
+    console.warn("Не вдалося завантажити телеметрію з бекенда", err);
+  }
+}
+
+async function sendTelemetryToBackend(data) {
+  try {
+    await fetch(`${API}/telemetry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        spacecraft_id: data.spacecraft_id,
+        parameter: data.parameter,
+        value: data.value,
+        timestamp: data.timestamp
+      })
+    });
+  } catch (err) {
+    console.warn("Не вдалося відправити телеметрію на бекенд", err);
+  }
+}
+
+// ============ ПОДІЇ (кнопки, вкладки і т.д.) ============
 function bindEvents() {
-  // перемикання вкладок
   document.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-view]");
     if (btn) {
@@ -157,10 +370,8 @@ function bindEvents() {
     }
   });
 
-  // пошук місій
   $("#missionSearch")?.addEventListener("input", (e) => {
     const value = e.target.value.trim().toLowerCase();
-    // пасхалка: azov / godmode
     if (value === "azov" || value === "godmode") activateEasterEgg();
     renderMissions(value);
   });
@@ -178,23 +389,27 @@ function bindEvents() {
 
   $("#importFile")?.addEventListener("change", importData);
 
-  $("#modal").addEventListener("click", (e) => {
+  $("#modal")?.addEventListener("click", (e) => {
     if (e.target.id === "modal") closeModal();
   });
 
-  $("#telemetrySelect")?.addEventListener("change", (e) => {
-    showTelemetryFor(parseInt(e.target.value));
+  $("#telemetrySelect")?.addEventListener("change", async (e) => {
+    const id = parseInt(e.target.value);
+    await updateTelemetryFromBackend(id);
+    showTelemetryFor(id);
   });
 
-  // звук кліку при натисканні будь-якої .btn або .nav-btn
   document.addEventListener("click", (e) => {
-    if (e.target.classList.contains("btn") || e.target.classList.contains("nav-btn")) {
+    if (
+      e.target.classList.contains("btn") ||
+      e.target.classList.contains("nav-btn")
+    ) {
       playClick();
     }
   });
 }
 
-// ====== ЗВУКИ ======
+// ===== ЗВУКИ =====
 function playClick() {
   const clickSound = $("#clickSound");
   if (clickSound) {
@@ -208,26 +423,28 @@ function showErrorOverlay() {
   const errorSound = $("#errorSound");
   if (!overlay) return;
 
-  errorSound && (errorSound.currentTime = 0, errorSound.play().catch(()=>{}));
+  errorSound && (errorSound.currentTime = 0, errorSound.play().catch(() => {}));
   overlay.classList.remove("hidden");
   document.body.classList.add("shake");
+
   setTimeout(() => {
     overlay.classList.add("hidden");
     document.body.classList.remove("shake");
   }, 2500);
 }
 
-// ====== Вкладки ======
+// ===== ВКЛАДКИ =====
 function switchView(view) {
   $$(".nav-btn").forEach((b) => b.classList.remove("active"));
-  $(`[data-view='${view}']`).classList.add("active");
+  const currentBtn = document.querySelector(`[data-view='${view}']`);
+  currentBtn && currentBtn.classList.add("active");
 
   $$(".view").forEach((v) => {
     v.style.display = v.id === view ? "block" : "none";
   });
 }
 
-// ====== МІСІЇ ======
+// ===== МІСІЇ =====
 function renderMissions(filter = "") {
   const host = $("#missionsList");
   if (!host) return;
@@ -235,7 +452,9 @@ function renderMissions(filter = "") {
 
   const q = filter.trim().toLowerCase();
   const items = DB.missions.filter(
-    (m) => !q || (m.name + m.status + m.description).toLowerCase().includes(q)
+    (m) =>
+      !q ||
+      (m.name + m.status + (m.description || "")).toLowerCase().includes(q)
   );
 
   if (!items.length) {
@@ -271,7 +490,6 @@ function viewMission(id) {
   `);
 }
 
-// створення місії
 function showAddMission() {
   openModal(`
     <h3>Додати місію</h3>
@@ -286,7 +504,7 @@ function showAddMission() {
     </div>
   `);
 
-  $("#saveMission").onclick = () => {
+  $("#saveMission").onclick = async () => {
     const name = $("#newName").value.trim();
     const date = $("#newLaunch").value.trim();
     const status = $("#newStatus").value.trim() || "planned";
@@ -297,26 +515,59 @@ function showAddMission() {
       return;
     }
 
-    const id = DB.missions.length
-      ? Math.max(...DB.missions.map((x) => x.id)) + 1
-      : 1;
-
-    DB.missions.push({
-      id,
+    const tempMission = {
+      id: Date.now(),
       name,
       launch_date: date,
       status,
       description: desc
-    });
+    };
 
+    DB.missions.push(tempMission);
     saveDB();
-    closeModal();
     renderMissions();
-    addLog(`Місію "${name}" додано`);
+    addLog(`Місію "${name}" додано (локально)`);
+
+    try {
+      const resp = await fetch(`${API}/missions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          launch_date: date,
+          duration_days: 0,
+          status,
+          description: desc
+        })
+      });
+
+      const data = await resp.json();
+      if (data && data.ok && data.mission) {
+        const idx = DB.missions.findIndex((m) => m.id === tempMission.id);
+        if (idx !== -1) {
+          DB.missions[idx] = {
+            id: data.mission.id,
+            name: data.mission.name,
+            launch_date: data.mission.launch_date,
+            status: data.mission.status,
+            description: data.mission.description || ""
+          };
+        }
+        saveDB();
+        renderMissions();
+        addLog(`Місію "${name}" синхронізовано з БД`);
+      }
+    } catch (err) {
+      console.warn("Не вдалося записати місію в БД", err);
+      addLog(`Місію "${name}" НЕ вдалося записати на сервер (офлайн-режим)`);
+    }
+
+    closeModal();
+    toast("Місію додано");
   };
 }
 
-// ====== АПАРАТИ ======
+// ===== АПАРАТИ =====
 function renderSpacecraft() {
   const host = $("#spacecraftList");
   if (!host) return;
@@ -385,8 +636,8 @@ function showAddSpacecraft() {
   };
 }
 
-// ====== ТЕЛЕМЕТРІЯ ======
-function populateTelemetrySelect() {
+// ===== ТЕЛЕМЕТРІЯ =====
+async function populateTelemetrySelect() {
   const sel = $("#telemetrySelect");
   if (!sel) return;
 
@@ -399,15 +650,18 @@ function populateTelemetrySelect() {
   });
 
   if (DB.spacecraft.length) {
-    sel.value = DB.spacecraft[0].id;
-    showTelemetryFor(DB.spacecraft[0].id);
+    const firstId = DB.spacecraft[0].id;
+    sel.value = firstId;
+
+    await updateTelemetryFromBackend(firstId);
+    showTelemetryFor(firstId);
   } else {
-    $("#telemetryTable").innerHTML = "<p class='muted small'>Немає телеметрії</p>";
+    $("#telemetryTable").innerHTML =
+      "<p class='muted small'>Немає телеметрії</p>";
     drawTelemetryChart([]);
   }
 }
 
-// симуляція (додає значення кожну секунду)
 function startTelemetrySimulation() {
   const sel = $("#telemetrySelect");
   if (!sel.value) return;
@@ -432,6 +686,7 @@ function startTelemetrySimulation() {
 
     DB.telemetry.push(newData);
     showTelemetryFor(id);
+    sendTelemetryToBackend(newData);
     count++;
   }, 1000);
 }
@@ -472,7 +727,6 @@ function showTelemetryFor(id) {
   drawTelemetryChart(rows);
 }
 
-// простий лінійний графік на <canvas>
 function drawTelemetryChart(data) {
   const canvas = $("#telemetryChart");
   if (!canvas) return;
@@ -501,7 +755,7 @@ function drawTelemetryChart(data) {
   ctx.stroke();
 }
 
-// ====== LOGS ======
+// ===== LOGS =====
 function renderLogs() {
   const box = $("#logsContainer");
   if (!box) return;
@@ -513,8 +767,7 @@ function renderLogs() {
 
   box.innerHTML = DB.logs
     .map(
-      (l) =>
-        `<div class="log-entry">[${l.time}] ${escapeHTML(l.text)}</div>`
+      (l) => `<div class="log-entry">[${l.time}] ${escapeHTML(l.text)}</div>`
     )
     .join("");
 }
@@ -537,12 +790,10 @@ function addLog(text) {
   renderLogs();
 }
 
-// ====== DEMО-КНОПКА "Завантажити демо-дані" ======
+// ===== ДЕМО "Завантажити демо-дані" =====
 function loadSampleData() {
-  // показати помилку з глітчем
   showErrorOverlay();
 
-  // додати трохи демо-даних
   DB.missions = [
     {
       id: 1,
@@ -609,9 +860,10 @@ function loadSampleData() {
   toast("Демо-дані завантажені");
 }
 
-// ====== ІМПОРТ / ЕКСПОРТ ======
+// ===== ІМПОРТ / ЕКСПОРТ =====
 function exportData() {
-  const dataStr = "data:text/json;charset=utf-8," +
+  const dataStr =
+    "data:text/json;charset=utf-8," +
     encodeURIComponent(JSON.stringify(DB, null, 2));
   const link = document.createElement("a");
   link.href = dataStr;
@@ -651,7 +903,7 @@ function clearData() {
   toast("Дані очищено");
 }
 
-// ====== МОДАЛКА ======
+// ===== МОДАЛКА =====
 function openModal(html) {
   $("#modalContent").innerHTML = html;
   $("#modal").classList.add("open");
@@ -660,7 +912,7 @@ function closeModal() {
   $("#modal").classList.remove("open");
 }
 
-// ====== УТИЛІТИ ======
+// ===== УТИЛІТИ =====
 function escapeHTML(str) {
   return String(str).replace(/[&<>\"']/g, (c) => {
     return {
@@ -681,7 +933,7 @@ function toast(msg) {
   setTimeout(() => el.remove(), 2000);
 }
 
-// ====== ПАСХАЛКА ======
+// ===== ПАСХАЛКА GODMODE =====
 function activateEasterEgg() {
   document.body.style.background = "#300";
   addLog(">>> GODMODE ACTIVATED <<<");
